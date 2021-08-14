@@ -1,11 +1,11 @@
 #! /usr/local/bin/python3
 #
-# Data v0.1
+# sanitise v0.1
 #
 # Tony Williams 2021-08-09
 #
 
-"""See docstring for Randomiser class"""
+"""See docstring for Sanitiser class"""
 
 import requests
 from random import randint, choice
@@ -15,7 +15,7 @@ import xml.etree.cElementTree as ET
 from os import path
 import plistlib
 
-APPNAME = "randomiser"
+APPNAME = "sanitise"
 LOGLEVEL = logging.DEBUG
 LOGFILE = "/usr/local/var/log/%s.log" % APPNAME
 
@@ -73,7 +73,7 @@ class Data:
         return "C02V" + Data.random_with_N_chars(8)
 
 
-class Randomiser:
+class Sanitiser:
     def setup_logging(self):
         """Defines a nicely formatted logger"""
 
@@ -175,4 +175,4 @@ class Randomiser:
 
 
 if __name__ == "__main__":
-    Randomiser().main()
+    Sanitiser().main()
