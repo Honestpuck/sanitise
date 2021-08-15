@@ -19,8 +19,6 @@ APPNAME = "sanitise"
 LOGLEVEL = logging.DEBUG
 LOGFILE = "/usr/local/var/log/%s.log" % APPNAME
 
-__all__ = [APPNAME]
-
 
 class Data:
     def __init__(self):

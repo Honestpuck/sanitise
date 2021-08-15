@@ -20,8 +20,6 @@ LOGLEVEL = logging.DEBUG
 LOGFILE = "/usr/local/var/log/%s.log" % APPNAME
 SIZE = 10  # number of computers to add to group
 
-__all__ = [APPNAME]
-
 
 class Groups:
     def setup_logging(self):
@@ -29,10 +27,6 @@ class Groups:
 
         self.logger = logging.getLogger(APPNAME)
         self.logger.setLevel(LOGLEVEL)
-        # we may be the second and subsequent iterations of JPCImporter
-        # and already have a handler.
-        if len(self.logger.handlers) > 0:
-            return
         handler = logging.handlers.TimedRotatingFileHandler(
             LOGFILE, when="D", interval=1, backupCount=7
         )
@@ -64,52 +58,89 @@ class Groups:
             self.logger.error(r.text)
             print("Failed to get computers")
             exit(1)
-        self.computers = r.json()["computers"]
+        return r.json()["computers"]
 
     def get_computer_groups(self):
         """get the computer groups"""
-        url = self.url + "computer_groups"
+        url = self.url + "computergroups"
         response = requests.get(url, auth=self.auth, headers=self.hdrs)
         if response.status_code != 200:
             self.logger.error("Failed to get computer groups")
             self.logger.error(response.text)
+            self.logger.error(response.status_code)
+            self.logger.error(response.url)
             print("Failed to get computer groups")
             exit(1)
-        self.computer_groups = response.json()["computer_groups"]
+        self.logger.debug("computer_groups")
+        self.logger.debug(response.url)
+        self.logger.debug(response.status_code)
+        return response.json()["computer_groups"]
 
     def random_computers(self):
         """get a random set of computers"""
-        return sample(self.computers, SIZE)
+        a = []
+        for n in sample(range(1, len(self.computers)), SIZE):
+            a.append(self.computers[n])
+        return a
 
     def one_group(self, group):
         """add computers to one group"""
         self.logger.info(f"Adding {SIZE} computers to {group['name']}")
+        response = requests.get(
+            self.url + "computergroups/id/" + str(group["id"]), auth=self.auth
+        )
+        if response.status_code != 200:
+            self.logger.error("Failed to get computer group")
+            self.logger.error(response.text)
+            self.logger.error(response.status_code)
+            self.logger.error(response.url)
+            print("Failed to get computer group")
+            exit(1)
+        grp = ET.fromstring(response.text)
+        size = ET.fromstring("<size>10</size>")
+        ET.SubElement(grp, "computers").append(size)
         for computer in self.random_computers():
-            ET.SubElement(group, "computers").append(
+            ET.SubElement(grp, "computers").append(
                 self.add_one_computer(computer)
             )
         self.logger.info("Done")
+        dat = ET.tostring(grp, encoding="unicode")
+        response = requests.put(
+            self.url + "computergroups/id/" + str(group["id"]),
+            auth=self.auth,
+            data=dat,
+        )
+        if response.status_code != 201:
+            self.logger.error("Failed to update computer group")
+            self.logger.error(response.text)
+            self.logger.error(response.status_code)
+            self.logger.error(response.url)
+            print("Failed to update computer group")
+            exit(1)
 
     def add_one_computer(self, computer):
         """add one computer to a group"""
-        url = self.url + f"computers/id/{computer['id']}"
+        url = self.url + f"computers/id/{str(computer['id'])}"
         response = requests.get(url, auth=self.auth, headers=self.hdrs)
         if response.status_code != 200:
             self.logger.error("Failed to get computer")
             self.logger.error(response.text)
+            self.logger.error(response.status_code)
+            self.logger.error(response.url)
             print("Failed to get computer")
             exit(1)
         computer = response.json()["computer"]
         new = f"""
         <computer>
-        <id>{id}</id>
+        <id>{computer['general']['id']}</id>
         <name>{computer['general']['name']}</name>
         <mac_address>{computer['general']['mac_address']}</mac_address>
         <alt_mac_address>{computer['general']['alt_mac_address']}</alt_mac_address>
-        <serial_number>{computer['general']['serial']}</serial_number>
+        <serial_number>{computer['general']['serial_number']}</serial_number>
         </computer>
         """
         new = "".join(new.split())
+        self.logger.debug(new)
         return ET.fromstring(new)
 
     def main(self):
@@ -117,11 +148,10 @@ class Groups:
         self.setup_logging()
         self.load_prefs()
         self.computers = self.get_computers()
-        self.get_computer_groups()
         self.logger.info("Adding computers to groups")
-        for group in self.computer_groups:
+        for group in self.get_computer_groups():
+            print(f"Processing group: {group['name']}")
             self.one_group(group)
-            self.logger.info(f"Adding {SIZE} computers to {group['name']}")
         self.logger.info("Done")
 
 
