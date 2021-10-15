@@ -35,7 +35,8 @@ class Data:
             name = f.read().splitlines()
         return name
 
-    # a blank line at the file end can cause problems so use len - 1 in case it's there
+    # a blank line at the file end can cause problems
+    # so use len - 1 in case it's there
     def random_surname():
         surnames = Data.surnames()
         surname = surnames[randint(0, len(surnames) - 1)]
@@ -94,20 +95,12 @@ class Sanitiser:
 
     def load_prefs(self):
         """ load the preferences from file """
-        # Which pref format to use, autopkg or jss_importer
-        autopkg = True
-        if autopkg:
-            plist = path.expanduser(
-                "~/Library/Preferences/com.github.nfr.autopkg.plist"
-            )
-            prefs = plistlib.load(open(plist, "rb"))
-            self.url = prefs["JSS_URL"] + "/JSSResource/computers"
-            self.auth = (prefs["API_USERNAME"], prefs["API_PASSWORD"])
-        else:
-            plist = path.expanduser("~/Library/Preferences/JPCImporter.plist")
-            prefs = plistlib.load(open(plist, "rb"))
-            self.url = prefs["url"]
-            self.auth = (prefs["user"], prefs["password"])
+        plist = path.expanduser(
+            "~/Library/Preferences/com.github.nfr.autopkg.plist"
+        )
+        prefs = plistlib.load(open(plist, "rb"))
+        self.url = prefs["JSS_URL"] + "/JSSResource/computers"
+        self.auth = (prefs["API_USERNAME"], prefs["API_PASSWORD"])
         self.hdrs = {"accept": "application/json"}
 
     def one_record(self, record):

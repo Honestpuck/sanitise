@@ -22,9 +22,21 @@ SIZE = 10  # number of computers to add to group
 
 
 class Groups:
+    """
+    Class to modify Jamf Pro Cloud computer groups by adding random computers
+    """
+
+    def error(self, response, message):
+        """ handle a requests error"""
+        self.logger.error(message)
+        self.logger.error(response.text)
+        self.logger.error(response.status_code)
+        self.logger.error(response.url)
+        print(message)
+        exit(1)
+
     def setup_logging(self):
         """Defines a nicely formatted logger"""
-
         self.logger = logging.getLogger(APPNAME)
         self.logger.setLevel(LOGLEVEL)
         handler = logging.handlers.TimedRotatingFileHandler(
@@ -45,35 +57,42 @@ class Groups:
         )
         prefs = plistlib.load(open(plist, "rb"))
         self.url = prefs["JSS_URL"] + "/JSSResource/"
-        self.auth = (prefs["API_USERNAME"], prefs["API_PASSWORD"])
         self.hdrs = {"accept": "application/json"}
+
+        # let's use the cookies to make sure we hit the
+        # same server for every request.
+        # The complication here is that ordinary and Premium Jamfers
+        # get two DIFFERENT cookies for this.
+
+        # the front page will give us the cookies
+        r = requests.get(prefs["JSS_URL"])
+
+        cookie_value = r.cookies.get("APBALANCEID")
+        if cookie_value:
+            # we are NOT premium Jamf Cloud
+            self.cookies = dict(APBALANCEID=cookie_value)
+        else:
+            self.cookies = dict(AWSALB=r.cookies["AWSALB"])
+        # now let's build a session
+        self.sess = requests.Session()
+        self.sess.cookies = self.cookies
+        self.sess.auth = (prefs["API_USERNAME"], prefs["API_PASSWORD"])
+        # we don't add the headers as we don't want JSON every time
 
     def get_computers(self):
         """get the list of computers"""
-        r = requests.get(
-            self.url + "computers", auth=self.auth, headers=self.hdrs
-        )
-        if r.status_code != 200:
-            self.logger.error("Failed to get computers")
-            self.logger.error(r.text)
-            print("Failed to get computers")
-            exit(1)
-        return r.json()["computers"]
+        response = sess.requests.get(self.url + "computers", headers=self.hdrs)
+        if response.status_code != 200:
+            self.error(response, "Could not get computer list")
+        return response.json()["computers"]
 
     def get_computer_groups(self):
         """get the computer groups"""
-        url = self.url + "computergroups"
-        response = requests.get(url, auth=self.auth, headers=self.hdrs)
+        response = sess.requests.get(
+            self.url + "computergroups", headers=self.hdrs
+        )
         if response.status_code != 200:
-            self.logger.error("Failed to get computer groups")
-            self.logger.error(response.text)
-            self.logger.error(response.status_code)
-            self.logger.error(response.url)
-            print("Failed to get computer groups")
-            exit(1)
-        self.logger.debug("computer_groups")
-        self.logger.debug(response.url)
-        self.logger.debug(response.status_code)
+            self.error(response, "Could not get computer groups")
         return response.json()["computer_groups"]
 
     def random_computers(self):
@@ -86,16 +105,11 @@ class Groups:
     def one_group(self, group):
         """add computers to one group"""
         self.logger.info(f"Adding {SIZE} computers to {group['name']}")
-        response = requests.get(
-            self.url + "computergroups/id/" + str(group["id"]), auth=self.auth
+        response = sess.requests.get(
+            self.url + "computergroups/id/" + str(group["id"])
         )
         if response.status_code != 200:
-            self.logger.error("Failed to get computer group")
-            self.logger.error(response.text)
-            self.logger.error(response.status_code)
-            self.logger.error(response.url)
-            print("Failed to get computer group")
-            exit(1)
+            self.error(response, "Could not get computer group")
         grp = ET.fromstring(response.text)
         size = ET.fromstring("<size>10</size>")
         ET.SubElement(grp, "computers").append(size)
@@ -103,32 +117,21 @@ class Groups:
             ET.SubElement(grp, "computers").append(
                 self.add_one_computer(computer)
             )
-        self.logger.info("Done")
-        dat = ET.tostring(grp, encoding="unicode")
-        response = requests.put(
+        response = sess.requests.put(
             self.url + "computergroups/id/" + str(group["id"]),
-            auth=self.auth,
-            data=dat,
+            data=ET.tostring(grp, encoding="unicode"),
         )
         if response.status_code != 201:
-            self.logger.error("Failed to update computer group")
-            self.logger.error(response.text)
-            self.logger.error(response.status_code)
-            self.logger.error(response.url)
-            print("Failed to update computer group")
-            exit(1)
+            self.error(response, "Could not update computer group")
+        self.logger.info(f"Finished {group['name']}")
 
     def add_one_computer(self, computer):
         """add one computer to a group"""
-        url = self.url + f"computers/id/{str(computer['id'])}"
-        response = requests.get(url, auth=self.auth, headers=self.hdrs)
+        response = sess.requests.get(
+            self.url + f"computers/id/{str(computer['id'])}", headers=self.hdrs
+        )
         if response.status_code != 200:
-            self.logger.error("Failed to get computer")
-            self.logger.error(response.text)
-            self.logger.error(response.status_code)
-            self.logger.error(response.url)
-            print("Failed to get computer")
-            exit(1)
+            self.error(response, "Could not get computer")
         computer = response.json()["computer"]
         new = f"""
         <computer>
@@ -152,7 +155,7 @@ class Groups:
         for group in self.get_computer_groups():
             print(f"Processing group: {group['name']}")
             self.one_group(group)
-        self.logger.info("Done")
+        self.logger.info("Done the lot")
 
 
 if __name__ == "__main__":
